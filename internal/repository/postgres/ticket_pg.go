@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 
 	"github.com/NghiaHoang/radiohead-ticketing/internal/domain"
 )
@@ -40,4 +39,37 @@ func (r *TicketPGRepo) UpdateStatus(ctx context.Context, ticketID string, oldSta
 	}
 
 	return nil
+}
+
+func (r *TicketPGRepo) GetTicket(ctx context.Context, ticketID string) (*domain.Ticket, error) {
+	query := `SELECT id, event_id, ticket_type_id, seat_identifier, status, version FROM tickets WHERE id = $1`
+	var t domain.Ticket
+	err := r.db.QueryRowContext(ctx, query, ticketID).Scan(
+		&t.ID, &t.EventID, &t.TicketTypeID, &t.SeatIdentifier, &t.Status, &t.Version,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func (r *TicketPGRepo) GetAvailableTickets(ctx context.Context, eventID string, limit int) ([]*domain.Ticket, error) {
+	query := `SELECT id, event_id, ticket_type_id, seat_identifier, status, version 
+	          FROM tickets WHERE event_id = $1 AND status = $2 LIMIT $3`
+
+	rows, err := r.db.QueryContext(ctx, query, eventID, domain.TicketAvailable, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tickets []*domain.Ticket
+	for rows.Next() {
+		var t domain.Ticket
+		if err := rows.Scan(&t.ID, &t.EventID, &t.TicketTypeID, &t.SeatIdentifier, &t.Status, &t.Version); err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, &t)
+	}
+	return tickets, nil
 }

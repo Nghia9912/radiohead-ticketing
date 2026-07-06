@@ -31,6 +31,7 @@ type Ticket struct {
 
 // TicketRepository defines the contract for communicating with the database layer
 type TicketRepository interface {
+	GetTicket(ctx context.Context, ticketID string) (*Ticket, error)
 	GetAvailableTickets(ctx context.Context, eventID string, limit int) ([]*Ticket, error)
 	// UpdateStatus requires the current version to prevent race conditions
 	UpdateStatus(ctx context.Context, ticketID string, oldStatus, newStatus TicketStatus, currentVersion int32) error
