@@ -2,6 +2,12 @@ package domain
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	ErrOptimisticLockConflict = errors.New("optimistic lock conflict: ticket has been updated by another transaction")
+	ErrTicketUnavailable      = errors.New("ticket is currently unavailable or locked by another user")
 )
 
 // TicketStatus manages the lifecycle of a ticket
@@ -28,4 +34,10 @@ type TicketRepository interface {
 	GetAvailableTickets(ctx context.Context, eventID string, limit int) ([]*Ticket, error)
 	// UpdateStatus requires the current version to prevent race conditions
 	UpdateStatus(ctx context.Context, ticketID string, oldStatus, newStatus TicketStatus, currentVersion int32) error
+}
+
+// TicketUsecase defines the usecase interface
+type TicketUsecase interface {
+	HoldTicket(ctx context.Context, userID string, ticketID string) error
+	ConfirmPurchase(ctx context.Context, userID, ticketID, orderID, email string) error
 }

@@ -7,15 +7,17 @@ import (
 
 	"github.com/NghiaHoang/radiohead-ticketing/internal/domain"
 	"github.com/NghiaHoang/radiohead-ticketing/internal/repository/redis"
+	"github.com/NghiaHoang/radiohead-ticketing/pkg/messagebroker"
 )
 
 type TicketUseCaseImpl struct {
-	pgRepo    domain.TicketRepository
-	redisRepo *redis.TicketRedisRepo
+	pgRepo        domain.TicketRepository
+	redisRepo     *redis.TicketRedisRepo
+	kafkaProducer *messagebroker.EventProducer
 }
 
-func NewTicketUseCase(pg domain.TicketRepository, rd *redis.TicketRedisRepo) domain.TicketUsecase {
-	return &TicketUseCaseImpl{pgRepo: pg, redisRepo: rd}
+func NewTicketUseCase(pg domain.TicketRepository, rd *redis.TicketRedisRepo, kp *messagebroker.EventProducer) domain.TicketUsecase {
+	return &TicketUseCaseImpl{pgRepo: pg, redisRepo: rd, kafkaProducer: kp}
 }
 
 // HoldTicket processes the user request to hold/reserve a ticket
@@ -36,5 +38,33 @@ func (u *TicketUseCaseImpl) HoldTicket(ctx context.Context, userID string, ticke
 
 	// Success: The ticket is reserved for the userID for 10 minutes.
 	// The frontend can now start a countdown timer for checkout.
+	return nil
+}
+// ConfirmPurchase handles the final checkout logic
+func (u *TicketUseCaseImpl) ConfirmPurchase(ctx context.Context, userID, ticketID, orderID, email string) error {
+	// 1. Fetch current status and version from DB
+	// TODO: Implement GetTicket in pgRepo to fetch the real currentVersion
+	var currentVersion int32 = 1 // Placeholder for now
+
+	// 2. Execute Optimistic Locking to transition status to SOLD
+	err := u.pgRepo.UpdateStatus(ctx, ticketID, domain.TicketLocked, domain.TicketSold, currentVersion)
+	if err != nil {
+		return err // Could be ErrOptimisticLockConflict
+	}
+
+	// 3. Publish Event to Kafka asynchronously
+	event := messagebroker.TicketSoldEvent{
+		OrderID:  orderID,
+		UserID:   userID,
+		TicketID: ticketID,
+		Email:    email,
+	}
+	
+	// Publish the event to Kafka. Do not block the main flow.
+	err = u.kafkaProducer.PublishTicketSold("ticket_sold_events", event)
+	if err != nil {
+		// In production, we should log this error properly
+	}
+
 	return nil
 }
